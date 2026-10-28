@@ -1,6 +1,7 @@
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
+from contextlib import asynccontextmanager
 import cv2
 import numpy as np
 import skimage
@@ -11,11 +12,19 @@ from pipelines.spatial import run_spatial_pipeline, spatial_pipeline_stub
 from pipelines.edge_shape import run_edge_shape_pipeline, edge_shape_pipeline_stub
 from pipelines.frequency import run_frequency_pipeline, frequency_pipeline_stub
 from pipelines.texture import run_texture_pipeline, texture_pipeline_stub
+from services.ml_service import ml_service
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager: Pre-loads the MobileNetV2 model into memory once at startup."""
+    ml_service.load_model()
+    yield
 
 app = FastAPI(
     title="DefectVision API",
     description="Industrial Defect Detection Computer Vision Service",
-    version="0.3.0"
+    version="0.4.0",
+    lifespan=lifespan
 )
 
 # Enable CORS for frontend integration
@@ -60,7 +69,8 @@ def health_check():
             "spatial": spatial_pipeline_stub(),
             "edge_shape": edge_shape_pipeline_stub(),
             "frequency": frequency_pipeline_stub(),
-            "texture": texture_pipeline_stub()
+            "texture": texture_pipeline_stub(),
+            "classification": ml_service.get_status()
         }
     }
 
@@ -146,6 +156,65 @@ async def texture_pipeline_endpoint(file: UploadFile = File(...)):
         "filename": file.filename,
         "result": result
     }
+
+@app.post("/api/ml/classify", tags=["Deep Learning"])
+@app.post("/api/pipelines/classify", include_in_schema=False)
+async def ml_classify_endpoint(file: UploadFile = File(...)):
+    """
+    Independent Endpoint for Deep Learning Defect Classification (MobileNetV2).
+    
+    - Accepts an uploaded image (JPEG, PNG, BMP).
+    - Validates image integrity and handles corrupted or invalid file types (HTTP 400).
+    - Checks model artifact readiness, handling missing models gracefully (HTTP 503).
+    - Applies training-time preprocessing: 3-channel RGB, 224x224 resize, [-1, 1] normalization.
+    - Returns predicted class, confidence, scores for all six classes, and runtime in ms.
+    - Operates completely independent of the four OpenCV pipelines.
+    """
+    if not ml_service.is_ready:
+        raise HTTPException(
+            status_code=503,
+            detail=f"ML Classification Service is unavailable: {ml_service._load_error or 'Model artifact not loaded. Check ml/artifacts/model/'}"
+        )
+
+    # 1. Validate File Format & Non-Empty
+    valid_exts = ('.jpg', '.jpeg', '.png', '.bmp')
+    is_valid_type = (file.content_type and file.content_type.startswith("image/")) or file.filename.lower().endswith(valid_exts)
+    if not is_valid_type:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid file type: '{file.filename}'. Uploaded file must be an image (JPG, PNG, BMP)."
+        )
+
+    contents = await file.read()
+    if not contents or len(contents) == 0:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty (0 bytes).")
+
+    # 2. Decode and Validate Image Bytes
+    nparr = np.frombuffer(contents, np.uint8)
+    img_bgr = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    if img_bgr is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Could not decode image bytes. The image file may be corrupted or unreadable."
+        )
+
+    # 3. Apply exact preprocessing and run inference
+    try:
+        result = ml_service.predict(img_bgr)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Inference execution failed: {str(e)}")
+
+    return {
+        "status": "success",
+        "filename": file.filename,
+        "predicted_class": result["predicted_class"],
+        "short_code": result["short_code"],
+        "confidence": result["confidence"],
+        "confidence_percentage": result["confidence_percentage"],
+        "scores": result["probabilities"],
+        "inference_runtime_ms": result["processing_time"]
+    }
+
 
 @app.post("/api/pipelines/consensus")
 async def consensus_endpoint(

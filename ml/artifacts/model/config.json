@@ -1,0 +1,70 @@
+{
+  "model_metadata": {
+    "name": "DefectVision_MobileNetV2",
+    "architecture": "MobileNetV2",
+    "format": "keras",
+    "model_filename": "defectvision_mobilenet_v2.keras",
+    "framework": "tensorflow/keras",
+    "version": "1.0.0",
+    "num_classes": 6,
+    "description": "Six-class deep learning classifier for hot-rolled steel surface defect identification."
+  },
+  "input_dimensions": {
+    "height": 224,
+    "width": 224,
+    "channels": 3,
+    "shape": [224, 224, 3],
+    "batch_input_shape": [null, 224, 224, 3],
+    "dtype": "float32"
+  },
+  "classes": [
+    "crazing",
+    "inclusion",
+    "patches",
+    "pitted_surface",
+    "rolled-in_scale",
+    "scratches"
+  ],
+  "class_to_idx": {
+    "crazing": 0,
+    "inclusion": 1,
+    "patches": 2,
+    "pitted_surface": 3,
+    "rolled-in_scale": 4,
+    "scratches": 5
+  },
+  "idx_to_class": {
+    "0": "crazing",
+    "1": "inclusion",
+    "2": "patches",
+    "3": "pitted_surface",
+    "4": "rolled-in_scale",
+    "5": "scratches"
+  },
+  "class_short_names": {
+    "crazing": "Cr",
+    "inclusion": "In",
+    "patches": "Pa",
+    "pitted_surface": "PS",
+    "rolled-in_scale": "RS",
+    "scratches": "Sc"
+  },
+  "preprocessing_configuration": {
+    "resize": {
+      "target_height": 224,
+      "target_width": 224,
+      "interpolation": "bilinear"
+    },
+    "color_space": {
+      "input_handling": "convert_grayscale_to_rgb",
+      "expected_channels": 3,
+      "channel_order": "RGB"
+    },
+    "normalization": {
+      "method": "mobilenet_v2",
+      "formula": "(pixel / 127.5) - 1.0",
+      "min_val": -1.0,
+      "max_val": 1.0
+    }
+  }
+}

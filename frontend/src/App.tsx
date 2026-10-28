@@ -1,9 +1,8 @@
-import { useState, useEffect, useRef, ChangeEvent, DragEvent } from 'react';
+import { useState, useEffect, useRef, type ChangeEvent, type DragEvent } from 'react';
 import { 
   Activity, 
   Cpu, 
   Layers, 
-  Radio, 
   RefreshCw, 
   Sliders, 
   Maximize2, 
@@ -18,7 +17,6 @@ import {
   Columns,
   Eye,
   Info,
-  Check,
   Zap,
   ShieldCheck,
   ShieldAlert,
@@ -135,10 +133,21 @@ interface ConsensusResult {
   processing_time: number;
 }
 
+interface MLClassificationResult {
+  status: string;
+  filename: string;
+  predicted_class: string;
+  short_code: string;
+  confidence: number;
+  confidence_percentage: string;
+  scores: Record<string, number>;
+  inference_runtime_ms: number;
+}
+
 export function App() {
   const [healthData, setHealthData] = useState<BackendHealth | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
+  const [_error, setError] = useState<string | null>(null);
 
   // Uploaded Image state
   const [rawFile, setRawFile] = useState<File | null>(null);
@@ -147,14 +156,20 @@ export function App() {
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
-  // Independent Pipeline States
+  // Independent Pipeline States (Four Classical Pipelines)
   const [activePipelineLoading, setActivePipelineLoading] = useState<string | null>(null);
   const [spatialResult, setSpatialResult] = useState<SpatialResult | null>(null);
   const [edgeShapeResult, setEdgeShapeResult] = useState<EdgeShapeResult | null>(null);
   const [frequencyResult, setFrequencyResult] = useState<FrequencyResult | null>(null);
   const [textureResult, setTextureResult] = useState<TextureResult | null>(null);
-  const [pipelineResults, setPipelineResults] = useState<Record<string, any>>({});
+  const [_pipelineResults, setPipelineResults] = useState<Record<string, any>>({});
   const [activeMessage, setActiveMessage] = useState<string | null>(null);
+
+  // Separate Deep Learning (MobileNetV2) States
+  const [mlResult, setMlResult] = useState<MLClassificationResult | null>(null);
+  const [mlLoading, setMlLoading] = useState<boolean>(false);
+  const [mlError, setMlError] = useState<string | null>(null);
+  const mlResultRef = useRef<HTMLDivElement>(null);
 
   // Compare All & Consensus States & Refs
   const [showComparison, setShowComparison] = useState<boolean>(false);
@@ -289,6 +304,8 @@ export function App() {
     setFrequencyResult(null);
     setTextureResult(null);
     setConsensusResult(null);
+    setMlResult(null);
+    setMlError(null);
     setShowComparison(false);
     setPipelineResults({});
     if (fileInputRef.current) {
@@ -346,6 +363,52 @@ export function App() {
       setActiveMessage(`Execution error for ${label}: ${err instanceof Error ? err.message : 'Failed endpoint call'}`);
     } finally {
       setActivePipelineLoading(null);
+    }
+  };
+
+  // INDEPENDENT DEEP LEARNING (MOBILENETV2) EXECUTION
+  const executeDeepLearning = async () => {
+    if (!rawFile && !previewUrl) return;
+
+    setMlLoading(true);
+    setMlError(null);
+    setActiveMessage('Executing MobileNetV2 Deep Learning classification (POST /api/ml/classify)...');
+
+    try {
+      let fileToUpload = rawFile;
+
+      if (!fileToUpload && previewUrl) {
+        const resp = await fetch(previewUrl);
+        const blob = await resp.blob();
+        fileToUpload = new File([blob], imageMeta?.name || 'target_image.png', { type: blob.type || 'image/png' });
+      }
+
+      const formData = new FormData();
+      formData.append('file', fileToUpload!);
+
+      const res = await fetch('http://localhost:8000/api/ml/classify', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.detail || `Server returned HTTP status ${res.status}`);
+      }
+
+      const data: MLClassificationResult = await res.json();
+      setMlResult(data);
+      setActiveMessage(`Deep Learning classification complete: ${data.predicted_class.toUpperCase()} (${data.confidence_percentage}) in ${data.inference_runtime_ms} ms.`);
+
+      setTimeout(() => {
+        mlResultRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Deep learning inference failed';
+      setMlError(msg);
+      setActiveMessage(`Deep Learning Error: ${msg}`);
+    } finally {
+      setMlLoading(false);
     }
   };
 
@@ -582,6 +645,22 @@ export function App() {
           >
             <Maximize2 size={14} className={activePipelineLoading === 'Texture/Gabor' ? 'animate-spin' : ''} style={{ color: 'var(--accent-emerald)' }} />
             {activePipelineLoading === 'Texture/Gabor' ? 'Running Texture...' : 'Run Texture/Gabor'}
+          </button>
+
+          {/* DEDICATED DEEP LEARNING BUTTON */}
+          <button 
+            disabled={!isImageUploaded || mlLoading}
+            onClick={executeDeepLearning}
+            className="btn-action"
+            style={{
+              borderColor: isImageUploaded ? '#818cf8' : 'rgba(255, 255, 255, 0.1)',
+              background: mlLoading ? 'rgba(99, 102, 241, 0.2)' : 'rgba(99, 102, 241, 0.08)',
+              color: isImageUploaded ? '#c7d2fe' : 'var(--text-dim)',
+              fontWeight: 600
+            }}
+          >
+            <Cpu size={14} className={mlLoading ? 'animate-spin' : ''} style={{ color: isImageUploaded ? '#818cf8' : 'var(--text-dim)' }} />
+            {mlLoading ? 'Classifying Defect...' : '[Run Deep Learning]'}
           </button>
 
           <button 
@@ -929,34 +1008,385 @@ export function App() {
                     {textureResult ? `${textureResult.processing_time} ms` : 'Not Run'}
                   </td>
                 </tr>
+
+                {/* MobileNetV2 Deep Learning Row */}
+                <tr style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.05)', background: 'rgba(99, 102, 241, 0.05)' }}>
+                  <td style={{ padding: '0.75rem 1rem', fontWeight: 600, color: '#a5b4fc', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                    <Cpu size={15} style={{ color: '#818cf8' }} />
+                    MobileNetV2 (Deep Learning)
+                  </td>
+                  <td style={{ padding: '0.75rem 1rem' }}>
+                    <span style={{
+                      padding: '0.25rem 0.6rem',
+                      borderRadius: '6px',
+                      fontSize: '0.8rem',
+                      fontFamily: 'monospace',
+                      background: mlResult ? 'rgba(99, 102, 241, 0.15)' : 'rgba(255, 255, 255, 0.06)',
+                      color: mlResult ? '#c7d2fe' : 'var(--text-dim)',
+                      border: `1px solid ${mlResult ? 'rgba(99, 102, 241, 0.35)' : 'rgba(255, 255, 255, 0.1)'}`
+                    }}>
+                      {mlResult ? 'Executed' : 'Not Run'}
+                    </span>
+                  </td>
+                  <td style={{ padding: '0.75rem 1rem', color: mlResult ? '#34d399' : 'var(--text-dim)' }}>
+                    {mlResult ? (
+                      <span style={{ fontWeight: 600, color: '#a5b4fc' }}>
+                        {mlResult.predicted_class.toUpperCase().replace('_', ' ')} ({mlResult.short_code}) — {mlResult.confidence_percentage}
+                      </span>
+                    ) : 'Not Run'}
+                  </td>
+                  <td style={{ padding: '0.75rem 1rem', fontSize: '0.8rem', color: 'var(--text-dim)', fontStyle: 'italic' }}>
+                    N/A (No Pixel Mask)
+                  </td>
+                  <td style={{ padding: '0.75rem 1rem', fontSize: '0.8rem', color: 'var(--text-dim)', fontStyle: 'italic' }}>
+                    N/A (Whole-Image)
+                  </td>
+                  <td style={{ padding: '0.75rem 1rem', fontFamily: 'monospace', color: mlResult ? 'var(--accent-amber)' : 'var(--text-dim)' }}>
+                    {mlResult ? `${mlResult.inference_runtime_ms} ms` : 'Not Run'}
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>
 
           {/* HIGHLIGHTED NUMERICAL DIFFERENCES BREAKDOWN */}
-          {spatialResult && edgeShapeResult && frequencyResult && textureResult && imageMeta && (
+          {imageMeta && (
             <div style={{ marginTop: '1.5rem', background: 'rgba(59, 130, 246, 0.06)', padding: '1rem 1.25rem', borderRadius: '8px', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
               <h4 style={{ fontSize: '0.875rem', fontWeight: 600, color: '#93c5fd', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <Sparkles size={16} /> Numerical Differences Analysis
+                <Sparkles size={16} /> Numerical & Algorithmic Differences Analysis
               </h4>
               <ul style={{ fontSize: '0.825rem', color: 'var(--text-muted)', paddingLeft: '1.2rem', margin: 0, display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                {spatialResult && edgeShapeResult && frequencyResult && textureResult && (
+                  <li>
+                    <strong>Spatial Area Coverage Variance:</strong> Spatial ({spatialResult.anomaly_area_percentage}%), Edge ({((edgeShapeResult.anomaly_area / (imageMeta.width * imageMeta.height)) * 100).toFixed(2)}%), FFT ({((frequencyResult.anomaly_area / (imageMeta.width * imageMeta.height)) * 100).toFixed(2)}%), Gabor ({((textureResult.anomaly_area / (imageMeta.width * imageMeta.height)) * 100).toFixed(2)}%).
+                  </li>
+                )}
                 <li>
-                  <strong>Area Coverage Variance:</strong> Spatial ({spatialResult.anomaly_area_percentage}%), Edge ({((edgeShapeResult.anomaly_area / (imageMeta.width * imageMeta.height)) * 100).toFixed(2)}%), FFT ({((frequencyResult.anomaly_area / (imageMeta.width * imageMeta.height)) * 100).toFixed(2)}%), Gabor ({((textureResult.anomaly_area / (imageMeta.width * imageMeta.height)) * 100).toFixed(2)}%).
+                  <strong>Runtime Latency Comparison:</strong> MobileNetV2 ({mlResult ? `${mlResult.inference_runtime_ms} ms` : 'Not Run'}) vs Edge/Shape ({edgeShapeResult ? `${edgeShapeResult.processing_time} ms` : 'Not Run'}) vs Spatial ({spatialResult ? `${spatialResult.processing_time} ms` : 'Not Run'}) vs FFT ({frequencyResult ? `${frequencyResult.processing_time} ms` : 'Not Run'}) vs Gabor ({textureResult ? `${textureResult.processing_time} ms` : 'Not Run'}).
                 </li>
                 <li>
-                  <strong>Runtime Performance:</strong> Edge/Shape ({edgeShapeResult.processing_time} ms) vs Spatial ({spatialResult.processing_time} ms) vs FFT ({frequencyResult.processing_time} ms) vs Gabor ({textureResult.processing_time} ms).
-                </li>
-                <li>
-                  <strong>Region Isolation Granularity:</strong> Region counts vary based on spatial connectivity vs frequency energy clustering vs Gabor response contours.
-                </li>
-                <li style={{ color: '#a78bfa', marginTop: '0.2rem' }}>
-                  <em>Note: Each pipeline measures different mathematical properties (intensity contrast, edge contours, spectral frequencies, micro-textures). No single approach is globally "best"—suitability depends on surface defect characteristics.</em>
+                  <strong>Localization vs. Classification Separation:</strong> Classical CV pipelines (Spatial, Edge, FFT, Texture) compute spatial anomaly masks from deterministic pixel transformations (intensity contrast, boundary edges, 2D Fourier high frequencies, Gabor wavelets). In contrast, MobileNetV2 performs hierarchical semantic feature extraction to produce 6-class softmax probabilities for the entire image without spatial localization.
                 </li>
               </ul>
             </div>
           )}
+
+          {/* GROUND-TRUTH EVALUATION METHODOLOGY & REQUIREMENTS */}
+          <div style={{
+            marginTop: '1.5rem',
+            background: 'rgba(99, 102, 241, 0.04)',
+            padding: '1.25rem',
+            borderRadius: '10px',
+            border: '1px solid rgba(129, 140, 248, 0.25)'
+          }}>
+            <h4 style={{ fontSize: '0.95rem', fontWeight: 600, color: '#c7d2fe', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <ShieldCheck size={18} style={{ color: '#818cf8' }} />
+              Ground-Truth Evaluation Requirements & Methodology
+            </h4>
+            <p style={{ fontSize: '0.825rem', color: 'var(--text-muted)', marginBottom: '1rem', lineHeight: '1.45' }}>
+              DefectVision strictly avoids fabricating evaluation metrics (e.g. Accuracy, IoU, Dice, Precision, Recall) on live unannotated images. Quantitative metrics are scientifically valid only when evaluated against real ground truth:
+            </p>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
+              <div style={{ background: 'rgba(0, 0, 0, 0.25)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                <div style={{ fontWeight: 600, color: '#38bdf8', fontSize: '0.85rem', marginBottom: '0.4rem' }}>
+                  1. Pixel-Level Segmentation (Classical Pipelines & Consensus)
+                </div>
+                <div style={{ fontSize: '0.8rem', color: '#e2e8f0', marginBottom: '0.4rem' }}>
+                  <strong>Requires:</strong> Ground-Truth Pixel Binary Defect Masks (M_true ∈ {'{0, 1}'}^H×W)
+                </div>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>
+                  Evaluating segmentation quality (Intersection-over-Union IoU, Dice similarity coefficient, pixel-level true positive and false alarm rates) requires manually annotated defect boundary masks. Without pixel ground truth, DefectVision displays raw extracted anomaly area percentages and multi-algorithm consensus overlap.
+                </div>
+              </div>
+
+              <div style={{ background: 'rgba(0, 0, 0, 0.25)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                <div style={{ fontWeight: 600, color: '#a5b4fc', fontSize: '0.85rem', marginBottom: '0.4rem' }}>
+                  2. Image-Level Classification (MobileNetV2 Deep Learning)
+                </div>
+                <div style={{ fontSize: '0.8rem', color: '#e2e8f0', marginBottom: '0.4rem' }}>
+                  <strong>Requires:</strong> Ground-Truth Defect Category Labels (y ∈ {'{crazing, inclusion, ...}'})
+                </div>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>
+                  Evaluating classification performance (Top-1 Accuracy, Macro Precision/Recall, Macro F1, Confusion Matrix) requires known class labels (as evaluated offline on the 360-image held-out test split). For live uploaded images without labels, the dashboard displays predicted softmax probabilities without fabricating accuracy.
+                </div>
+              </div>
+            </div>
+          </div>
         </section>
       )}
+
+      {/* DEEP LEARNING (MOBILENETV2) CLASSIFICATION MODULE */}
+      <section ref={mlResultRef} className="glass-card" style={{ border: '1px solid rgba(129, 140, 248, 0.45)', marginBottom: '2.5rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+          <div>
+            <h2 className="section-heading" style={{ margin: 0, color: '#a5b4fc' }}>
+              <Cpu size={22} style={{ color: '#818cf8' }} />
+              Deep Learning Results Panel (MobileNetV2)
+            </h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.2rem' }}>
+              Image-level defect taxonomy classification via fine-tuned MobileNetV2 transfer learning (POST /api/ml/classify)
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            {mlResult && !mlLoading && (
+              <span style={{ fontSize: '0.8rem', color: 'var(--accent-cyan)', fontFamily: 'monospace', background: 'rgba(6, 182, 212, 0.1)', padding: '0.3rem 0.6rem', borderRadius: '6px', border: '1px solid rgba(6, 182, 212, 0.25)' }}>
+                Runtime: {mlResult.inference_runtime_ms} ms
+              </span>
+            )}
+            <button 
+              disabled={!isImageUploaded || mlLoading}
+              onClick={executeDeepLearning}
+              className="btn-action"
+              style={{ 
+                fontSize: '0.85rem', 
+                borderColor: '#818cf8', 
+                color: isImageUploaded ? '#c7d2fe' : 'var(--text-dim)',
+                background: mlLoading ? 'rgba(99, 102, 241, 0.25)' : 'rgba(99, 102, 241, 0.12)'
+              }}
+            >
+              <Cpu size={14} className={mlLoading ? 'animate-spin' : ''} style={{ color: isImageUploaded ? '#818cf8' : 'var(--text-dim)' }} />
+              {mlLoading ? 'Classifying Defect...' : mlResult ? 'Re-Run Deep Learning' : '[Run Deep Learning]'}
+            </button>
+          </div>
+        </div>
+
+        {/* 1. LOADING STATE */}
+        {mlLoading && (
+          <div style={{
+            padding: '2.5rem 1.5rem',
+            textAlign: 'center',
+            background: 'rgba(99, 102, 241, 0.05)',
+            border: '1px solid rgba(129, 140, 248, 0.25)',
+            borderRadius: '10px',
+            marginBottom: '1rem'
+          }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '56px', height: '56px', borderRadius: '50%', background: 'rgba(99, 102, 241, 0.15)', marginBottom: '1rem' }}>
+              <Cpu size={28} className="animate-spin" style={{ color: '#818cf8' }} />
+            </div>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: '#e0e7ff', marginBottom: '0.4rem' }}>
+              Running MobileNetV2 Defect Classification...
+            </h3>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', maxWidth: '480px', margin: '0 auto 1.25rem auto', lineHeight: '1.4' }}>
+              Streaming image bytes to <code>POST /api/ml/classify</code>, applying 224×224 3-channel RGB preprocessing, and computing 6-class softmax probabilities.
+            </p>
+            <div style={{ maxWidth: '320px', height: '4px', background: 'rgba(255, 255, 255, 0.08)', borderRadius: '2px', margin: '0 auto', overflow: 'hidden' }}>
+              <div style={{ width: '60%', height: '100%', background: 'linear-gradient(90deg, #6366f1, #38bdf8)', borderRadius: '2px', animation: 'pulse 1.5s infinite' }} />
+            </div>
+          </div>
+        )}
+
+        {/* 2. ERROR & RETRY STATE */}
+        {mlError && !mlLoading && (
+          <div style={{
+            background: 'rgba(244, 63, 94, 0.1)',
+            border: '1px solid rgba(244, 63, 94, 0.3)',
+            borderRadius: '10px',
+            padding: '1.5rem',
+            marginBottom: '1.25rem',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            textAlign: 'center'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#fb7185', fontWeight: 600, fontSize: '0.95rem', marginBottom: '0.5rem' }}>
+              <AlertCircle size={20} />
+              Deep Learning Classification Failed
+            </div>
+            <p style={{ color: '#fca5a5', fontSize: '0.85rem', maxWidth: '520px', margin: '0 0 1rem 0' }}>
+              {mlError}
+            </p>
+            <button 
+              onClick={executeDeepLearning}
+              disabled={!isImageUploaded || mlLoading}
+              className="btn-action"
+              style={{
+                borderColor: '#fb7185',
+                background: 'rgba(244, 63, 94, 0.15)',
+                color: '#fecdd3',
+                fontSize: '0.825rem',
+                padding: '0.45rem 1rem'
+              }}
+            >
+              <RefreshCw size={14} className={mlLoading ? 'animate-spin' : ''} />
+              Retry Classification
+            </button>
+          </div>
+        )}
+
+        {/* 3. SUCCESS / RESULTS STATE */}
+        {mlResult && !mlLoading && (
+          <div>
+            {/* Top Category Highlight Header */}
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center', 
+              marginBottom: '1.25rem', 
+              flexWrap: 'wrap', 
+              gap: '0.75rem',
+              padding: '0.85rem 1rem',
+              background: 'rgba(16, 185, 129, 0.08)',
+              border: '1px solid rgba(52, 211, 153, 0.25)',
+              borderRadius: '8px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <CheckCircle2 size={20} style={{ color: '#34d399' }} />
+                <div>
+                  <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', display: 'block' }}>
+                    Predicted Defect Category
+                  </span>
+                  <span style={{ fontSize: '1.1rem', fontWeight: 700, color: '#f3f4f6' }}>
+                    {mlResult.predicted_class.toUpperCase().replace('_', ' ')}
+                  </span>
+                  <span style={{ marginLeft: '0.5rem', fontSize: '0.85rem', color: '#a5b4fc', fontFamily: 'monospace', fontWeight: 600 }}>
+                    ({mlResult.short_code})
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div style={{ textAlign: 'right' }}>
+                  <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', display: 'block' }}>
+                    Top Confidence
+                  </span>
+                  <span style={{ fontSize: '1.1rem', fontWeight: 700, color: '#34d399', fontFamily: 'monospace' }}>
+                    {mlResult.confidence_percentage}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Overview Key Metrics Grid */}
+            <div className="meta-grid" style={{ marginBottom: '1.5rem' }}>
+              <div className="meta-card">
+                <div className="meta-label">Predicted Defect Category</div>
+                <div className="meta-value" style={{ color: '#a5b4fc', textTransform: 'capitalize' }}>
+                  {mlResult.predicted_class.replace('_', ' ')} ({mlResult.short_code})
+                </div>
+              </div>
+              <div className="meta-card">
+                <div className="meta-label">Classification Confidence</div>
+                <div className="meta-value" style={{ color: 'var(--accent-emerald)' }}>
+                  {mlResult.confidence_percentage}
+                </div>
+              </div>
+              <div className="meta-card">
+                <div className="meta-label">Inference Runtime</div>
+                <div className="meta-value" style={{ color: 'var(--accent-amber)' }}>
+                  {mlResult.inference_runtime_ms} ms
+                </div>
+              </div>
+              <div className="meta-card">
+                <div className="meta-label">Output Format</div>
+                <div className="meta-value" style={{ fontSize: '0.9rem', color: '#93c5fd' }}>
+                  Whole-Image Categorical
+                </div>
+              </div>
+            </div>
+
+            {/* SIX-CLASS SOFTMAX PROBABILITY DISTRIBUTION BREAKDOWN */}
+            <div style={{ background: 'rgba(0, 0, 0, 0.3)', padding: '1.25rem', borderRadius: '10px', border: '1px solid rgba(255, 255, 255, 0.08)', marginBottom: '1.25rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                <div style={{ fontSize: '0.95rem', fontWeight: 600, color: '#f3f4f6', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Activity size={18} style={{ color: '#818cf8' }} />
+                  Six-Class Softmax Probability Distribution
+                </div>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  Sum of categorical scores = 100.0%
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                {Object.entries(mlResult.scores)
+                  .sort(([, a], [, b]) => b - a)
+                  .map(([className, probScore]) => {
+                    const isTop = className === mlResult.predicted_class;
+                    const pct = (probScore * 100).toFixed(2);
+                    return (
+                      <div key={className}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.825rem', marginBottom: '0.35rem' }}>
+                          <span style={{ 
+                            fontWeight: isTop ? 700 : 500, 
+                            color: isTop ? '#c7d2fe' : 'var(--text-muted)',
+                            textTransform: 'capitalize',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.4rem'
+                          }}>
+                            {className.replace('_', ' ')}
+                            {isTop && (
+                              <span style={{ 
+                                fontSize: '0.7rem', 
+                                padding: '0.1rem 0.4rem', 
+                                borderRadius: '4px', 
+                                background: 'rgba(99, 102, 241, 0.25)', 
+                                color: '#a5b4fc',
+                                border: '1px solid rgba(99, 102, 241, 0.4)'
+                              }}>
+                                Top Match
+                              </span>
+                            )}
+                          </span>
+                          <span style={{ fontFamily: 'monospace', color: isTop ? '#34d399' : 'var(--text-dim)', fontSize: '0.85rem' }}>
+                            {pct}% <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>({probScore.toFixed(4)})</span>
+                          </span>
+                        </div>
+                        <div style={{ width: '100%', height: '8px', background: 'rgba(255, 255, 255, 0.08)', borderRadius: '4px', overflow: 'hidden' }}>
+                          <div style={{
+                            width: `${Math.max(Number(pct), 0.5)}%`,
+                            height: '100%',
+                            background: isTop 
+                              ? 'linear-gradient(90deg, #6366f1, #34d399)' 
+                              : 'rgba(148, 163, 184, 0.35)',
+                            borderRadius: '4px',
+                            transition: 'width 0.4s ease'
+                          }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+
+            {/* EXPLICIT CLASSIFICATION SCOPE NOTICE: NOT A PIXEL MASK */}
+            <div style={{ 
+              padding: '0.85rem 1.1rem', 
+              background: 'rgba(255, 255, 255, 0.03)', 
+              borderRadius: '8px', 
+              border: '1px solid rgba(255, 255, 255, 0.08)', 
+              fontSize: '0.8rem', 
+              color: 'var(--text-muted)',
+              lineHeight: '1.45'
+            }}>
+              <strong style={{ color: '#c7d2fe' }}>ℹ️ Scope & Metric Clarification:</strong> Deep learning inference evaluates image-level defect likelihoods across the six NEU taxonomy classes. Unlike the classical CV pipelines below (Spatial, Edge/Shape, Frequency, Texture) and the 2+ Pipeline Consensus Engine, <strong>deep learning classification produces categorical confidence scores and does not generate pixel-level defect segmentation masks or boundary contour overlays.</strong>
+            </div>
+          </div>
+        )}
+
+        {/* 4. IDLE / UNEXECUTED STATE */}
+        {!mlResult && !mlLoading && !mlError && (
+          <div style={{
+            padding: '2.5rem 1.5rem',
+            textAlign: 'center',
+            color: 'var(--text-dim)',
+            fontSize: '0.9rem',
+            border: '1px dashed rgba(255, 255, 255, 0.1)',
+            borderRadius: '8px'
+          }}>
+            <Cpu size={32} style={{ color: 'var(--text-muted)', margin: '0 auto 0.75rem auto', opacity: 0.6 }} />
+            <div style={{ color: '#e0e7ff', fontWeight: 500, marginBottom: '0.35rem' }}>
+              Deep Learning Classifier Ready
+            </div>
+            <p style={{ maxWidth: '440px', margin: '0 auto', fontSize: '0.825rem', color: 'var(--text-muted)' }}>
+              {isImageUploaded 
+                ? 'Click [Run Deep Learning] above to identify the defect category and calculate softmax scores across all six classes.'
+                : 'Upload or load a surface inspection target image to execute MobileNetV2 classification.'}
+            </p>
+          </div>
+        )}
+      </section>
 
       {/* FOUR INDEPENDENT PIPELINE SECTIONS */}
       <h2 className="section-heading" style={{ marginTop: '2.5rem', marginBottom: '1.25rem' }}>
