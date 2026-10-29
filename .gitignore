@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+
+# Dataset — keep local, don't push to GitHub
+NEU-DET/
+**/NEU-DET/

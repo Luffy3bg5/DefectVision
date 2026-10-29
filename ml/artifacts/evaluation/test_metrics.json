@@ -1,0 +1,136 @@
+{
+  "model_evaluated": "C:\\Users\\Asus\\Desktop\\IP-project\\DefectVision\\ml\\artifacts\\stage1\\best_mobilenet_stage1.keras",
+  "manifest_path": "C:\\Users\\Asus\\Desktop\\IP-project\\DefectVision\\ml\\artifacts\\splits\\splits_manifest.json",
+  "total_test_samples": 180,
+  "accuracy": 0.9777777777777777,
+  "macro_precision": 0.978494623655914,
+  "macro_recall": 0.9777777777777779,
+  "macro_f1": 0.9775668679896462,
+  "class_rankings_by_f1": [
+    [
+      "inclusion",
+      0.9473684210526315
+    ],
+    [
+      "scratches",
+      0.9508196721311475
+    ],
+    [
+      "pitted_surface",
+      0.9836065573770492
+    ],
+    [
+      "rolled-in_scale",
+      0.9836065573770492
+    ],
+    [
+      "crazing",
+      1.0
+    ],
+    [
+      "patches",
+      1.0
+    ]
+  ],
+  "confusion_matrix": [
+    [
+      30,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      27,
+      0,
+      1,
+      0,
+      2
+    ],
+    [
+      0,
+      0,
+      30,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      30,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      30,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      1,
+      29
+    ]
+  ],
+  "classification_report": {
+    "crazing": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 30.0
+    },
+    "inclusion": {
+      "precision": 1.0,
+      "recall": 0.9,
+      "f1-score": 0.9473684210526315,
+      "support": 30.0
+    },
+    "patches": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 30.0
+    },
+    "pitted_surface": {
+      "precision": 0.967741935483871,
+      "recall": 1.0,
+      "f1-score": 0.9836065573770492,
+      "support": 30.0
+    },
+    "rolled-in_scale": {
+      "precision": 0.967741935483871,
+      "recall": 1.0,
+      "f1-score": 0.9836065573770492,
+      "support": 30.0
+    },
+    "scratches": {
+      "precision": 0.9354838709677419,
+      "recall": 0.9666666666666667,
+      "f1-score": 0.9508196721311475,
+      "support": 30.0
+    },
+    "accuracy": 0.9777777777777777,
+    "macro avg": {
+      "precision": 0.978494623655914,
+      "recall": 0.9777777777777779,
+      "f1-score": 0.9775668679896462,
+      "support": 180.0
+    },
+    "weighted avg": {
+      "precision": 0.978494623655914,
+      "recall": 0.9777777777777777,
+      "f1-score": 0.9775668679896461,
+      "support": 180.0
+    }
+  }
+}

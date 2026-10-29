@@ -58,18 +58,10 @@ def parse_and_process_image(
       5. Applies MobileNetV2 preprocessing (scales pixel values from [0, 255] to [-1, 1]).
       6. Enforces static shape [224, 224, 3].
     """
-    # 1. Read file bytes and decode
+    # 1. Read file bytes and decode with channels=3 (converts grayscale/BMP/PNG/JPEG to RGB)
     raw_bytes = tf.io.read_file(file_path)
-    # decode_image handles BMP, PNG, JPEG; channels=3 converts grayscale to 3 identical RGB channels
     image = tf.io.decode_image(raw_bytes, channels=3, expand_animations=False, dtype=tf.uint8)
-
-    # 2. Defensive check: Convert grayscale (H, W, 1) to RGB (H, W, 3) if channels was 1
-    image_shape = tf.shape(image)
-    image = tf.cond(
-        tf.equal(image_shape[-1], 1),
-        lambda: tf.image.grayscale_to_rgb(image),
-        lambda: image
-    )
+    image.set_shape([None, None, 3])
 
     # 3. Cast to float32 and resize to (224, 224)
     image = tf.cast(image, tf.float32)

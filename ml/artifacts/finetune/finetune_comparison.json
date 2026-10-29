@@ -1,0 +1,62 @@
+{
+  "fine_tune_at_layer": 100,
+  "learning_rate": 1e-05,
+  "selection_rule": "Primary: highest validation accuracy. Secondary (on tie): lowest validation loss. Tie-breaker: retain Stage 1 (frozen backbone) if loss does not improve.",
+  "selected_best_model": "Stage 1 (Frozen Backbone Model)",
+  "selection_reason": "Stage 1 retained: Stage 2 validation accuracy dropped (97.78% vs 99.44%).",
+  "pre_finetune": {
+    "val_loss": 0.09166348725557327,
+    "val_accuracy": 0.9944444298744202
+  },
+  "post_finetune": {
+    "val_loss": 0.08655206859111786,
+    "val_accuracy": 0.9777777791023254
+  },
+  "deltas": {
+    "val_loss_change": -0.005111418664455414,
+    "val_accuracy_change": -0.016666650772094727
+  },
+  "best_overall_checkpoint": "C:\\Users\\Asus\\Desktop\\IP-project\\DefectVision\\ml\\artifacts\\finetune\\best_overall_model.keras",
+  "history": {
+    "accuracy": [
+      0.6048611402511597,
+      0.9138888716697693,
+      0.9673610925674438,
+      0.9861111044883728,
+      0.988194465637207,
+      0.9923611283302307
+    ],
+    "loss": [
+      1.2399555444717407,
+      0.3486248552799225,
+      0.16901953518390656,
+      0.11528376489877701,
+      0.09862541407346725,
+      0.08509152382612228
+    ],
+    "val_accuracy": [
+      0.9777777791023254,
+      0.9611111283302307,
+      0.9555555582046509,
+      0.9444444179534912,
+      0.9222221970558167,
+      0.9222221970558167
+    ],
+    "val_loss": [
+      0.08655206859111786,
+      0.10385290533304214,
+      0.13396884500980377,
+      0.1510484516620636,
+      0.17037998139858246,
+      0.18097226321697235
+    ],
+    "learning_rate": [
+      9.999999747378752e-06,
+      9.999999747378752e-06,
+      9.999999747378752e-06,
+      4.999999873689376e-06,
+      4.999999873689376e-06,
+      2.499999936844688e-06
+    ]
+  }
+}

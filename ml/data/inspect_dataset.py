@@ -3,9 +3,8 @@ import argparse
 import sys
 from typing import Dict, List, Tuple, Optional, Any
 from PIL import Image
-import matplotlib.pyplot as plt
 
-
+# Note: matplotlib is imported lazily inside plot_sample_grid if visualization is requested.
 # Standard NEU 6-class defect mappings
 NEU_CLASSES = {
     "crazing": "Cr",
@@ -163,6 +162,8 @@ def plot_sample_grid(results: Dict[str, Any], output_path: Optional[str] = None,
     if not classes:
         print("No samples available to display.")
         return
+
+    import matplotlib.pyplot as plt
 
     n_classes = len(classes)
     cols = 3  # Display 3 samples per class

@@ -1,0 +1,27 @@
+{
+  "classes": [
+    "crazing",
+    "inclusion",
+    "patches",
+    "pitted_surface",
+    "rolled-in_scale",
+    "scratches"
+  ],
+  "class_to_idx": {
+    "crazing": 0,
+    "inclusion": 1,
+    "patches": 2,
+    "pitted_surface": 3,
+    "rolled-in_scale": 4,
+    "scratches": 5
+  },
+  "idx_to_class": {
+    "0": "crazing",
+    "1": "inclusion",
+    "2": "patches",
+    "3": "pitted_surface",
+    "4": "rolled-in_scale",
+    "5": "scratches"
+  },
+  "num_classes": 6
+}

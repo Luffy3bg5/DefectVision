@@ -54,6 +54,7 @@ def train_stage1(
     batch_size: int = 32,
     learning_rate: float = 1e-3,
     patience: int = 5,
+    seed: int = 42,
 ) -> Dict[str, Any]:
     """
     Executes Transfer Learning Stage 1 for MobileNetV2:
@@ -64,6 +65,8 @@ def train_stage1(
       - Strictly leaves the test set untouched (evaluated only on val_ds).
     """
     import tensorflow as tf
+    tf.keras.utils.set_random_seed(seed)
+
     from ml.data.tf_pipeline import create_mobilenet_dataloaders
     from ml.models.mobilenet_tf import build_mobilenet_v2_classifier
 
@@ -204,6 +207,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size (default: 32)")
     parser.add_argument("--lr", type=float, default=1e-3, help="Initial learning rate (default: 1e-3)")
     parser.add_argument("--patience", type=int, default=5, help="Early stopping patience (default: 5)")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility (default: 42)")
     args = parser.parse_args()
 
     train_stage1(
@@ -213,4 +217,5 @@ if __name__ == "__main__":
         batch_size=args.batch_size,
         learning_rate=args.lr,
         patience=args.patience,
+        seed=args.seed,
     )

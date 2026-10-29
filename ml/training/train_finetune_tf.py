@@ -84,6 +84,7 @@ def train_finetune(
     batch_size: int = 32,
     learning_rate: float = 1e-5,
     patience: int = 5,
+    seed: int = 42,
 ) -> Dict[str, Any]:
     """
     Executes Optional Transfer Learning Stage 2 (Fine-Tuning):
@@ -98,6 +99,8 @@ def train_finetune(
       8. Strictly avoids evaluating on or leaking the test set.
     """
     import tensorflow as tf
+    tf.keras.utils.set_random_seed(seed)
+
     from ml.data.tf_pipeline import create_mobilenet_dataloaders
     from ml.models.mobilenet_tf import unfreeze_backbone_layers
 
@@ -191,8 +194,14 @@ def train_finetune(
 
     stage2_history = history.history
 
-    # 8. Measure Post-Fine-Tuning Validation Performance
-    post_results = model.evaluate(val_ds, verbose=0)
+    # 8. Measure Post-Fine-Tuning Validation Performance on Best Checkpoint
+    if os.path.exists(best_finetuned_checkpoint):
+        print(f"\nLoading best saved fine-tuned checkpoint for validation evaluation: {best_finetuned_checkpoint}")
+        eval_model = tf.keras.models.load_model(best_finetuned_checkpoint)
+        post_results = eval_model.evaluate(val_ds, verbose=0)
+    else:
+        post_results = model.evaluate(val_ds, verbose=0)
+
     post_val_loss = float(post_results[0])
     post_val_acc = float(post_results[1])
 
@@ -200,18 +209,53 @@ def train_finetune(
     delta_acc = post_val_acc - pre_val_acc
 
     # 9. Comparison & Selection of Best Overall Model
+    # Selection Safeguards:
+    # 1. Higher validation accuracy strictly wins.
+    # 2. If validation accuracy ties, validation loss is used as secondary criterion.
+    # 3. If accuracy ties and Stage 2 does not improve loss, Stage 1 is retained (simpler frozen backbone).
+    selection_rule = (
+        "Primary: highest validation accuracy. "
+        "Secondary (on tie): lowest validation loss. "
+        "Tie-breaker: retain Stage 1 (frozen backbone) if loss does not improve."
+    )
     best_overall_checkpoint = os.path.join(output_dir, "best_overall_model.keras")
-    if post_val_acc >= pre_val_acc:
+
+    if post_val_acc > pre_val_acc:
         shutil.copy2(best_finetuned_checkpoint, best_overall_checkpoint)
         selected_winner = "Stage 2 (Fine-Tuned Model)"
+        selection_reason = (
+            f"Stage 2 fine-tuning achieved higher validation accuracy "
+            f"({post_val_acc * 100:.2f}% vs {pre_val_acc * 100:.2f}%)."
+        )
+    elif abs(post_val_acc - pre_val_acc) < 1e-5 and post_val_loss < pre_val_loss:
+        shutil.copy2(best_finetuned_checkpoint, best_overall_checkpoint)
+        selected_winner = "Stage 2 (Fine-Tuned Model)"
+        selection_reason = (
+            f"Validation accuracy tied at {post_val_acc * 100:.2f}%, but Stage 2 achieved "
+            f"lower validation loss ({post_val_loss:.4f} vs {pre_val_loss:.4f}, delta: {delta_loss:.4f})."
+        )
     else:
         shutil.copy2(stage1_checkpoint, best_overall_checkpoint)
         selected_winner = "Stage 1 (Frozen Backbone Model)"
+        if post_val_acc < pre_val_acc:
+            selection_reason = (
+                f"Stage 1 retained: Stage 2 validation accuracy dropped "
+                f"({post_val_acc * 100:.2f}% vs {pre_val_acc * 100:.2f}%)."
+            )
+        else:
+            selection_reason = (
+                f"Stage 1 retained: Validation accuracy tied at {post_val_acc * 100:.2f}%, "
+                f"and Stage 2 validation loss did not improve ({post_val_loss:.4f} vs {pre_val_loss:.4f}). "
+                "Simpler frozen model preferred to avoid unnecessary parameter complexity."
+            )
 
     # Save Comparison Metrics JSON
     comparison_summary = {
         "fine_tune_at_layer": fine_tune_at,
         "learning_rate": learning_rate,
+        "selection_rule": selection_rule,
+        "selected_best_model": selected_winner,
+        "selection_reason": selection_reason,
         "pre_finetune": {
             "val_loss": pre_val_loss,
             "val_accuracy": pre_val_acc,
@@ -224,7 +268,6 @@ def train_finetune(
             "val_loss_change": delta_loss,
             "val_accuracy_change": delta_acc,
         },
-        "selected_best_model": selected_winner,
         "best_overall_checkpoint": os.path.abspath(best_overall_checkpoint),
         "history": stage2_history,
     }
@@ -251,8 +294,10 @@ def train_finetune(
     acc_sign = "+" if delta_acc >= 0 else ""
     loss_sign = "+" if delta_loss >= 0 else ""
     print(f"Accuracy Delta: {acc_sign}{delta_acc * 100:.2f}% | Loss Delta: {loss_sign}{delta_loss:.4f}")
-    print(f"Best Validation Model Saved As : {best_overall_checkpoint}")
+    print(f"Selection Rule                 : {selection_rule}")
     print(f"Selected Checkpoint Winner     : {selected_winner}")
+    print(f"Selection Rationale            : {selection_reason}")
+    print(f"Best Validation Model Saved As : {best_overall_checkpoint}")
     print("=" * 78)
 
     return comparison_summary
@@ -288,6 +333,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size (default: 32)")
     parser.add_argument("--lr", type=float, default=1e-5, help="Fine-tuning learning rate (default: 1e-5)")
     parser.add_argument("--patience", type=int, default=5, help="Early stopping patience (default: 5)")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility (default: 42)")
     args = parser.parse_args()
 
     train_finetune(
@@ -299,4 +345,5 @@ if __name__ == "__main__":
         batch_size=args.batch_size,
         learning_rate=args.lr,
         patience=args.patience,
+        seed=args.seed,
     )
